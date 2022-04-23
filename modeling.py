@@ -33,9 +33,9 @@ from torch.nn import CrossEntropyLoss
 
 from .file_utils import cached_path
 
-logging.basicConfig(format = '%(asctime)s - %(levelname)s - %(name)s -   %(message)s', 
-                    datefmt = '%m/%d/%Y %H:%M:%S',
-                    level = logging.INFO)
+logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s -   %(message)s',
+                    datefmt='%m/%d/%Y %H:%M:%S',
+                    level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 PRETRAINED_MODEL_ARCHIVE_MAP = {
@@ -48,24 +48,30 @@ PRETRAINED_MODEL_ARCHIVE_MAP = {
 CONFIG_NAME = 'bert_config.json'
 WEIGHTS_NAME = 'pytorch_model.bin'
 
+
 def gelu(x):
-    """Implementation of the gelu activation function.
+    """relu的平滑版本，用在gpt3，bert和其他的transformer架构中
+    Implementation of the gelu activation function.
         For information: OpenAI GPT's gelu is slightly different (and gives slightly different results):
         0.5 * x * (1 + torch.tanh(math.sqrt(2 / math.pi) * (x + 0.044715 * torch.pow(x, 3))))
     """
     return x * 0.5 * (1.0 + torch.erf(x / math.sqrt(2.0)))
 
 
-def swish(x):
+def silu(x):
+    '''
+    relu的改进版，也叫silu，self-gated activation function
+    '''
     return x * torch.sigmoid(x)
 
-
-ACT2FN = {"gelu": gelu, "relu": torch.nn.functional.relu, "swish": swish}
+# 三种激活函数
+ACT2FN = {"gelu": gelu, "relu": torch.nn.functional.relu, "swish": silu}
 
 
 class BertConfig(object):
     """Configuration class to store the configuration of a `BertModel`.
     """
+
     def __init__(self,
                  vocab_size_or_config_json_file,
                  hidden_size=768,
@@ -150,10 +156,13 @@ class BertConfig(object):
         """Serializes this instance to a JSON string."""
         return json.dumps(self.to_dict(), indent=2, sort_keys=True) + "\n"
 
-
+'''
+参数量：hidden_size*2
+'''
 class BertLayerNorm(nn.Module):
     def __init__(self, config, variance_epsilon=1e-12):
         """Construct a layernorm module in the TF style (epsilon inside the square root).
+        这是针对一个token本身的hidden vector进行norm
         """
         super(BertLayerNorm, self).__init__()
         self.gamma = nn.Parameter(torch.ones(config.hidden_size))
@@ -170,6 +179,7 @@ class BertLayerNorm(nn.Module):
 class BertEmbeddings(nn.Module):
     """Construct the embeddings from word, position and token_type embeddings.
     """
+
     def __init__(self, config):
         super(BertEmbeddings, self).__init__()
         self.word_embeddings = nn.Embedding(config.vocab_size, config.hidden_size)
@@ -182,6 +192,11 @@ class BertEmbeddings(nn.Module):
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
 
     def forward(self, input_ids, token_type_ids=None):
+        """
+        @param input_ids: [bsz, seq_length]
+        @param token_type_ids: [bsz, seq_len]
+        @return:
+        """
         seq_length = input_ids.size(1)
         position_ids = torch.arange(seq_length, dtype=torch.long, device=input_ids.device)
         position_ids = position_ids.unsqueeze(0).expand_as(input_ids)
@@ -197,7 +212,9 @@ class BertEmbeddings(nn.Module):
         embeddings = self.dropout(embeddings)
         return embeddings
 
-
+'''
+多头自注意力的标准实现
+'''
 class BertSelfAttention(nn.Module):
     def __init__(self, config):
         super(BertSelfAttention, self).__init__()
@@ -244,11 +261,14 @@ class BertSelfAttention(nn.Module):
 
         context_layer = torch.matmul(attention_probs, value_layer)
         context_layer = context_layer.permute(0, 2, 1, 3).contiguous()
+        # 这种先确定shape，再进行view的方法很赞，代码可读性比较强
         new_context_layer_shape = context_layer.size()[:-2] + (self.all_head_size,)
         context_layer = context_layer.view(*new_context_layer_shape)
         return context_layer
 
-
+'''
+这里使用的是post-norm
+'''
 class BertSelfOutput(nn.Module):
     def __init__(self, config):
         super(BertSelfOutput, self).__init__()
@@ -320,7 +340,7 @@ class BertEncoder(nn.Module):
     def __init__(self, config):
         super(BertEncoder, self).__init__()
         layer = BertLayer(config)
-        self.layer = nn.ModuleList([copy.deepcopy(layer) for _ in range(config.num_hidden_layers)])    
+        self.layer = nn.ModuleList([copy.deepcopy(layer) for _ in range(config.num_hidden_layers)])
 
     def forward(self, hidden_states, attention_mask, output_all_encoded_layers=True):
         all_encoder_layers = []
@@ -418,6 +438,7 @@ class PreTrainedBertModel(nn.Module):
     """ An abstract class to handle weights initialization and
         a simple interface for dowloading and loading pretrained models.
     """
+
     def __init__(self, config, *inputs, **kwargs):
         super(PreTrainedBertModel, self).__init__()
         if not isinstance(config, BertConfig):
@@ -519,6 +540,7 @@ class PreTrainedBertModel(nn.Module):
             for name, child in module._modules.items():
                 if child is not None:
                     load(child, prefix + name + '.')
+
         load(model, prefix='' if hasattr(model, 'bert') else 'bert.')
         if len(missing_keys) > 0:
             logger.info("Weights of {} not initialized from pretrained model: {}".format(
@@ -576,6 +598,7 @@ class BertModel(PreTrainedBertModel):
     all_encoder_layers, pooled_output = model(input_ids, token_type_ids, input_mask)
     ```
     """
+
     def __init__(self, config):
         super(BertModel, self).__init__(config)
         self.embeddings = BertEmbeddings(config)
@@ -601,7 +624,7 @@ class BertModel(PreTrainedBertModel):
         # positions we want to attend and -10000.0 for masked positions.
         # Since we are adding it to the raw scores before the softmax, this is
         # effectively the same as removing these entirely.
-        extended_attention_mask = extended_attention_mask.to(dtype=next(self.parameters()).dtype) # fp16 compatibility
+        extended_attention_mask = extended_attention_mask.to(dtype=next(self.parameters()).dtype)  # fp16 compatibility
         extended_attention_mask = (1.0 - extended_attention_mask) * -10000.0
 
         embedding_output = self.embeddings(input_ids, token_type_ids)
@@ -665,13 +688,15 @@ class BertForPreTraining(PreTrainedBertModel):
     masked_lm_logits_scores, seq_relationship_logits = model(input_ids, token_type_ids, input_mask)
     ```
     """
+
     def __init__(self, config):
         super(BertForPreTraining, self).__init__(config)
         self.bert = BertModel(config)
         self.cls = BertPreTrainingHeads(config, self.bert.embeddings.word_embeddings.weight)
         self.apply(self.init_bert_weights)
 
-    def forward(self, input_ids, token_type_ids=None, attention_mask=None, masked_lm_labels=None, next_sentence_label=None):
+    def forward(self, input_ids, token_type_ids=None, attention_mask=None, masked_lm_labels=None,
+                next_sentence_label=None):
         sequence_output, pooled_output = self.bert(input_ids, token_type_ids, attention_mask,
                                                    output_all_encoded_layers=False)
         prediction_scores, seq_relationship_score = self.cls(sequence_output, pooled_output)
@@ -728,6 +753,7 @@ class BertForMaskedLM(PreTrainedBertModel):
     masked_lm_logits_scores = model(input_ids, token_type_ids, input_mask)
     ```
     """
+
     def __init__(self, config):
         super(BertForMaskedLM, self).__init__(config)
         self.bert = BertModel(config)
@@ -790,6 +816,7 @@ class BertForNextSentencePrediction(PreTrainedBertModel):
     seq_relationship_logits = model(input_ids, token_type_ids, input_mask)
     ```
     """
+
     def __init__(self, config):
         super(BertForNextSentencePrediction, self).__init__(config)
         self.bert = BertModel(config)
@@ -799,7 +826,7 @@ class BertForNextSentencePrediction(PreTrainedBertModel):
     def forward(self, input_ids, token_type_ids=None, attention_mask=None, next_sentence_label=None):
         _, pooled_output = self.bert(input_ids, token_type_ids, attention_mask,
                                      output_all_encoded_layers=False)
-        seq_relationship_score = self.cls( pooled_output)
+        seq_relationship_score = self.cls(pooled_output)
 
         if next_sentence_label is not None:
             loss_fct = CrossEntropyLoss(ignore_index=-1)
@@ -854,6 +881,7 @@ class BertForSequenceClassification(PreTrainedBertModel):
     logits = model(input_ids, token_type_ids, input_mask)
     ```
     """
+
     def __init__(self, config, num_labels=2):
         super(BertForSequenceClassification, self).__init__(config)
         self.bert = BertModel(config)
@@ -929,6 +957,7 @@ class BertForQuestionAnswering(PreTrainedBertModel):
     start_logits, end_logits = model(input_ids, token_type_ids, input_mask)
     ```
     """
+
     def __init__(self, config):
         super(BertForQuestionAnswering, self).__init__(config)
         self.bert = BertModel(config)
