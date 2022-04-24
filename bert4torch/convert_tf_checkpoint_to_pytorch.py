@@ -89,25 +89,10 @@ def convert_tf_checkpoint_to_pytorch(tf_checkpoint_path, bert_config_file, pytor
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    ## Required parameters
-    parser.add_argument("--tf_checkpoint_path",
-                        default="/root/chinese_L-12_H-768_A-12/",
-                        type=str,
-                        required=False,
-                        help="Path the TensorFlow checkpoint path.")
-    parser.add_argument("--bert_config_file",
-                        default="/root/chinese_L-12_H-768_A-12/bert_config.json",
-                        type=str,
-                        required=False,
-                        help="The config json file corresponding to the pre-trained BERT model. \n"
-                             "This specifies the model architecture.")
-    parser.add_argument("--pytorch_dump_path",
-                        default="/root/chinese_L-12_H-768_A-12/",
-                        type=str,
-                        required=False,
-                        help="Path to the output PyTorch model.")
-    args = parser.parse_args()
-    convert_tf_checkpoint_to_pytorch(args.tf_checkpoint_path,
-                                     args.bert_config_file,
-                                     args.pytorch_dump_path)
+    tf_checkpoint_path = "/root/chinese_L-12_H-768_A-12/"
+    bert_config_file = "/root/chinese_L-12_H-768_A-12/bert_config.json"
+    pytorch_dump_path = "/root/chinese_L-12_H-768_A-12/"
+
+    convert_tf_checkpoint_to_pytorch(tf_checkpoint_path,
+                                     bert_config_file,
+                                     pytorch_dump_path)
