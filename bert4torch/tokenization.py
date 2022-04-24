@@ -23,7 +23,7 @@ import unicodedata
 import os
 import logging
 
-from .file_utils import cached_path
+from bert4torch.file_utils import cached_path
 
 logging.basicConfig(format = '%(asctime)s - %(levelname)s - %(name)s -   %(message)s', 
                     datefmt = '%m/%d/%Y %H:%M:%S',
