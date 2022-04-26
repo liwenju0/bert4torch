@@ -20,10 +20,10 @@ from __future__ import print_function
 
 import os
 import re
-import argparse
+
+import numpy as np
 import tensorflow as tf
 import torch
-import numpy as np
 
 from bert4torch.modeling import BertConfig, BertForPreTraining
 
@@ -89,9 +89,9 @@ def convert_tf_checkpoint_to_pytorch(tf_checkpoint_path, bert_config_file, pytor
 
 
 if __name__ == "__main__":
-    tf_checkpoint_path = "/root/chinese_L-12_H-768_A-12/"
-    bert_config_file = "/root/chinese_L-12_H-768_A-12/bert_config.json"
-    pytorch_dump_path = "/root/chinese_L-12_H-768_A-12/"
+    tf_checkpoint_path = "/Users/milter/Downloads/bert4torch/bert_base_chinese/bert_model.ckpt"
+    bert_config_file = "/Users/milter/Downloads/bert4torch/bert_base_chinese/bert_config.json"
+    pytorch_dump_path = "/Users/milter/Downloads/bert4torch/bert_base_chinese/bert_pytorch.bin"
 
     convert_tf_checkpoint_to_pytorch(tf_checkpoint_path,
                                      bert_config_file,
